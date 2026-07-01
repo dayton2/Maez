@@ -1,0 +1,22 @@
+! Line definitions
+New Line.feeder_1_2   Phases=3 Bus1=src_1.1.2.3  Bus2=con_2.1.2.3  LineCode=ug_11x14 Length=0.5  Units=mi
+
+New Line.feeder_2_3   Phases=3 Bus1=con_2.1.2.3  Bus2=con_3.1.2.3  LineCode=ug_11x14 Length=0.25 Units=mi
+New Line.feeder_2_4   Phases=3 Bus1=con_2.1.2.3  Bus2=con_4.1.2.3  LineCode=ug_11x14 Length=0.25 Units=mi
+New Line.feeder_2_5   Phases=3 Bus1=con_2.1.2.3  Bus2=con_5.1.2.3  LineCode=ug_11x14 Length=0.25 Units=mi
+
+New Line.feeder_4_8   Phases=3 Bus1=con_4.1.2.3  Bus2=con_8.1.2.3  LineCode=ug_11x14 Length=0.25 Units=mi
+New Line.feeder_4_9   Phases=3 Bus1=con_4.1.2.3  Bus2=con_9.1.2.3  LineCode=ug_11x14 Length=0.25 Units=mi
+
+New Line.feeder_5_6   Phases=3 Bus1=con_5.1.2.3  Bus2=con_6.1.2.3  LineCode=ug_11x14 Length=0.25 Units=mi
+New Line.feeder_5_10  Phases=3 Bus1=con_5.1.2.3  Bus2=con_10.1.2.3 LineCode=ug_11x14 Length=0.25 Units=mi
+
+New Line.feeder_10_15 Phases=3 Bus1=con_10.1.2.3 Bus2=con_15.1.2.3 LineCode=ug_11x14 Length=0.25 Units=mi
+New Line.feeder_10_16 Phases=3 Bus1=con_10.1.2.3 Bus2=con_16.1.2.3 LineCode=ug_11x14 Length=0.25 Units=mi
+
+New Line.feeder_6_14  Phases=3 Bus1=con_6.1.2.3  Bus2=con_14.1.2.3 LineCode=ug_11x14 Length=0.25 Units=mi
+New Line.feeder_6_7   Phases=3 Bus1=con_6.1.2.3  Bus2=con_7.1.2.3  LineCode=ug_11x14 Length=0.25 Units=mi
+
+New Line.feeder_7_11  Phases=3 Bus1=con_7.1.2.3  Bus2=con_11.1.2.3 LineCode=ug_11x14 Length=0.25 Units=mi
+New Line.feeder_7_12  Phases=3 Bus1=con_7.1.2.3  Bus2=con_12.1.2.3 LineCode=ug_11x14 Length=0.25 Units=mi
+New Line.feeder_7_13  Phases=3 Bus1=con_7.1.2.3  Bus2=con_13.1.2.3 LineCode=ug_11x14 Length=0.25 Units=mi

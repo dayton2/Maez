@@ -1,0 +1,17 @@
+Clear
+
+New Circuit.maez_feeder Phases=3 BaseKV=12.47 PU=1.000 Bus1=src_1.1.2.3
+
+Redirect LineCodes.dss
+Redirect Lines.dss
+Redirect Loads.dss
+Redirect PVSystems.dss
+Redirect Monitors.dss
+
+Set VoltageBases=[12.47]
+CalcVoltageBases
+
+Set ControlMode=Static
+Set MaxControlIter=20
+
+Solve

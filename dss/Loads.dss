@@ -1,0 +1,11 @@
+! Base Load definitions
+New Load.load_8A Phases=1 Bus1=con_8.1 Conn=wye KV=7.2 KW=300 KVAR=100 Model=1
+New Load.load_8B Phases=1 Bus1=con_8.2 Conn=wye KV=7.2 KW=250 KVAR=80  Model=1
+New Load.load_8C Phases=1 Bus1=con_8.3 Conn=wye KV=7.2 KW=150 KVAR=50  Model=1
+
+New Load.load_9A Phases=1 Bus1=con_9
+New Load.load_11A Phases=1 Bus1=con_11
+New Load.load_12A Phases=1 Bus1=con_12 
+New Load.load_13A Phases=1 Bus1=con_13
+New Load.load_14A Phases=1 Bus1=con_14
+New Load.load_15A Phases=1 Bus1=con_15

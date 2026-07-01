@@ -1,0 +1,7 @@
+!  Define the LineCode using per-mile matrices
+New LineCode.ug_11x14
+~ Nphases=3
+~ Units=mi
+~ Rmatrix=[0.9102 | 0.3653 0.9061 | 0.3327 0.3653 0.9102]
+~ Xmatrix=[0.4934 | 0.0668 0.4511 | 0.0162 0.0668 0.4934]
+~ Bmatrix=[93.1595 | 0.0 93.1595 | 0.0 0.0 93.1595]
