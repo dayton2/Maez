@@ -6,7 +6,7 @@ function [DSSCircuit, DSSSolution] = compileDSS(DSSObj, DSSText, masterFile)
     end
 
     DSSText.Command = 'clear';
-    DSSText.Command = sprinf('compile "%s"', masterFile);
+    DSSText.Command = sprintf('compile "%s"', masterFile);
 
     if ~isempty(strtrim(DSSText.Result))
         fprintf('OpenDSS compile result: %s\n', DSSText.Result);
