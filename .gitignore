@@ -1,0 +1,11 @@
+# Python environments, bytecode, and tool caches are local build artifacts.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Wheel/sdist output produced when packaging the src-layout project.
+build/
+dist/
+*.egg-info/
