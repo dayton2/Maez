@@ -1,0 +1,3 @@
+Datetime,PVSystem,Irradiance_kW_m2,Temperature_C,Pmpp_kW,kVA,PF
+2026-07-01 12:00:00,PV_346kW,0.50,30,346,346,1.0
+2026-07-01 12:30:00,PV_346kW,0.80,35,346,346,1.0
