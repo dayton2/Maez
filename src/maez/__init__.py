@@ -1,12 +1,14 @@
-"""Tools for running the Maez OpenDSS distribution-system study."""
+"""Phase-resolved time-series analysis for the Maez OpenDSS feeder."""
 
-from maez.config import AnalysisPaths, LoadGroup, default_load_groups
-from maez.simulation import SimulationResults, run_time_series
+from maez.config import AnalysisPaths, default_study_spec
+from maez.models.measurements import SimulationResults
+from maez.models.profiles import StudyInputs
+from maez.simulation import run_time_series
 
 __all__ = [
     "AnalysisPaths",
-    "LoadGroup",
     "SimulationResults",
-    "default_load_groups",
+    "StudyInputs",
+    "default_study_spec",
     "run_time_series",
 ]

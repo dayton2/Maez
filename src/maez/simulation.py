@@ -1,147 +1,187 @@
-"""Time-series OpenDSS solution loop and result collection."""
+"""Orchestrate time-step injection, OpenDSS solving, and result collection."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from math import acos, tan
 from pathlib import Path
-from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
 
-from maez.config import LoadGroup
-from maez.opendss_engine import compile_circuit
-from maez.profiles import Profiles, corresponding_pf_column
+from maez.engine.bindings import build_bindings
+from maez.engine.circuit import compile_circuit
+from maez.engine.injection import configure_pv_ratings, inject_time_step
+from maez.engine.measurement import collect_bus_voltages, collect_element_measurements
+from maez.models.circuit import StudySpec
+from maez.models.measurements import ElementPhaseMeasurement, SimulationResults
+from maez.models.profiles import StudyInputs
+
+PHASES = ("A", "B", "C")
 
 
-@dataclass(frozen=True)
-class SimulationResults:
-    """The three normalized tables produced by a time-series analysis."""
+def run_time_series(master_file: Path, study: StudySpec, inputs: StudyInputs) -> SimulationResults:
+    """Run independent snapshots while retaining the previous voltage solution."""
 
-    bus_power: pd.DataFrame
-    system_power: pd.DataFrame
-    applied_loads: pd.DataFrame
-
-
-def kw_pf_to_kvar(kw: float, power_factor: float) -> float:
-    """Convert real power and lagging power factor to reactive-power magnitude."""
-
-    if not 0 < power_factor <= 1:
-        raise ValueError(f"Power factor must be in (0, 1]; received {power_factor}.")
-    return kw * tan(acos(power_factor))
-
-
-def run_time_series(
-    master_file: Path,
-    profiles: Profiles,
-    load_groups: Sequence[LoadGroup],
-) -> SimulationResults:
-    """Apply each profile row, solve a snapshot, and collect circuit results.
-
-    The CSV data already represents 30-minute samples, so each row is solved as
-    an independent static snapshot. OpenDSS controls are allowed to settle within
-    each solve according to the settings in ``Master.dss``.
-    """
-
-    dss = compile_circuit(master_file)
+    dss = compile_circuit(master_file, study)
     circuit = dss.ActiveCircuit
     solution = circuit.Solution
     dss.Text.Command = "set mode=snapshot"
+    bindings = build_bindings(circuit, study)
+    configure_pv_ratings(circuit, bindings, inputs)
 
-    bus_names = list(circuit.AllBusNames)
+    element_rows: list[dict[str, object]] = []
     bus_rows: list[dict[str, object]] = []
+    utility_rows: list[dict[str, object]] = []
     system_rows: list[dict[str, object]] = []
     applied_rows: list[dict[str, object]] = []
 
-    for step_index, timestamp in enumerate(profiles.timestamps):
-        for group in load_groups:
-            total_kw = float(profiles.active_power.at[step_index, group.profile_column])
-            pf_column = corresponding_pf_column(group.profile_column)
-            total_kvar = kw_pf_to_kvar(
-                total_kw, float(profiles.power_factor.at[step_index, pf_column])
-            )
-
-            # Three single-phase elements model one balanced building demand.
-            phase_kw = total_kw / len(group.load_names)
-            phase_kvar = total_kvar / len(group.load_names)
-            for load_name in group.load_names:
-                dss.Text.Command = (
-                    f"edit load.{load_name} kW={phase_kw:.12f} kvar={phase_kvar:.12f}"
-                )
-
-            applied_rows.append(
-                {
-                    "Datetime": timestamp,
-                    "BuildingProfile": group.profile_column,
-                    "Bus": group.bus,
-                    "AssignedKW": total_kw,
-                    "AssignedKvar": total_kvar,
-                }
-            )
-
+    for step_index, timestamp in enumerate(inputs.timestamps):
+        inject_time_step(circuit, bindings, inputs, step_index)
         solution.Solve()
         if not solution.Converged:
             raise RuntimeError(
                 f"OpenDSS did not converge at time step {step_index + 1} ({timestamp})."
             )
 
-        bus_p, bus_q = _collect_bus_pc_element_powers(circuit, bus_names)
-        bus_rows.extend(
-            {
-                "Datetime": timestamp,
-                "Bus": bus_name,
-                "P_kW": bus_p[bus_index],
-                "Q_kvar": bus_q[bus_index],
-            }
-            for bus_index, bus_name in enumerate(bus_names)
-        )
+        step_elements: list[ElementPhaseMeasurement] = []
+        for element_name in bindings.measured_element_names:
+            step_elements.extend(
+                collect_element_measurements(circuit, element_name, timestamp, (1,))
+            )
+        element_rows.extend(record.as_record() for record in step_elements)
+        element_rows.extend(_element_net_rows(step_elements))
 
-        # TotalPower uses the source-delivery sign convention. Negating it makes
-        # positive values represent net circuit demand, matching the MATLAB export.
-        total_power = circuit.TotalPower
-        system_rows.append(
-            {
-                "Datetime": timestamp,
-                "TotalKW": -float(total_power[0]),
-                "TotalKvar": -float(total_power[1]),
-            }
+        utility_phases = collect_element_measurements(
+            circuit, bindings.utility_line_name, timestamp, (1,)
         )
+        utility_rows.extend(record.as_record() for record in utility_phases)
+        utility_rows.extend(_element_net_rows(utility_phases))
+
+        bus_rows.extend(
+            record.as_record()
+            for record in collect_bus_voltages(circuit, bindings.bus_names, timestamp)
+        )
+        system_rows.extend(_system_balance_rows(timestamp, step_elements, utility_phases))
+        applied_rows.extend(_applied_input_rows(timestamp, step_index, study, inputs))
 
     return SimulationResults(
-        bus_power=pd.DataFrame(bus_rows),
-        system_power=pd.DataFrame(system_rows),
-        applied_loads=pd.DataFrame(applied_rows),
+        element_timeseries=pd.DataFrame(element_rows),
+        bus_voltage_timeseries=pd.DataFrame(bus_rows),
+        utility_line_timeseries=pd.DataFrame(utility_rows),
+        system_timeseries=pd.DataFrame(system_rows),
+        applied_inputs=pd.DataFrame(applied_rows),
     )
 
 
-def _collect_bus_pc_element_powers(
-    circuit: Any, bus_names: Sequence[str]
-) -> tuple[np.ndarray, np.ndarray]:
-    """Sum load and PV powers onto the first terminal's normalized bus name."""
+def _element_net_rows(records: list[ElementPhaseMeasurement]) -> list[dict[str, object]]:
+    """Add P/Q totals per element terminal; current and voltage have no scalar net."""
 
-    bus_p = np.zeros(len(bus_names), dtype=float)
-    bus_q = np.zeros(len(bus_names), dtype=float)
-    bus_lookup = {name.casefold(): index for index, name in enumerate(bus_names)}
+    grouped: dict[tuple[object, ...], list[ElementPhaseMeasurement]] = {}
+    for record in records:
+        key = (
+            record.Datetime,
+            record.ElementClass,
+            record.Element,
+            record.Terminal,
+            record.Bus,
+        )
+        grouped.setdefault(key, []).append(record)
+    return [
+        {
+            "Datetime": key[0],
+            "ElementClass": key[1],
+            "Element": key[2],
+            "Terminal": key[3],
+            "Bus": key[4],
+            "Node": 0,
+            "Phase": "NET",
+            "P_kW": sum(record.P_kW for record in phase_records),
+            "Q_kvar": sum(record.Q_kvar for record in phase_records),
+            "I_A": np.nan,
+            "I_angle_deg": np.nan,
+            "V_V": np.nan,
+            "V_angle_deg": np.nan,
+        }
+        for key, phase_records in grouped.items()
+    ]
 
-    for element_name in circuit.AllElementNames:
-        if not element_name.casefold().startswith(("load.", "pvsystem.")):
-            continue
 
-        circuit.SetActiveElement(element_name)
-        element = circuit.ActiveCktElement
-        element_buses = element.BusNames
-        if not element_buses:
-            continue
+def _system_balance_rows(
+    timestamp: pd.Timestamp,
+    elements: list[ElementPhaseMeasurement],
+    utility: list[ElementPhaseMeasurement],
+) -> list[dict[str, object]]:
+    """Derive gross load, positive PV generation, source import, and losses."""
 
-        # Remove node suffixes (for example, con_8.1) to match AllBusNames.
-        bus_name = element_buses[0].split(".", maxsplit=1)[0]
-        bus_index = bus_lookup.get(bus_name.casefold())
-        if bus_index is None:
-            continue
+    rows: list[dict[str, object]] = []
+    for phase in (*PHASES, "NET"):
+        selected_elements = (
+            elements if phase == "NET" else [r for r in elements if r.Phase == phase]
+        )
+        selected_utility = utility if phase == "NET" else [r for r in utility if r.Phase == phase]
+        loads = [r for r in selected_elements if r.ElementClass.casefold() == "load"]
+        pv = [r for r in selected_elements if r.ElementClass.casefold() == "pvsystem"]
+        gross_p = sum(r.P_kW for r in loads)
+        gross_q = sum(r.Q_kvar for r in loads)
+        # Raw PV terminal power is negative when the inverter delivers to the feeder.
+        pv_p = -sum(r.P_kW for r in pv)
+        pv_q = -sum(r.Q_kvar for r in pv)
+        source_p = sum(r.P_kW for r in selected_utility)
+        source_q = sum(r.Q_kvar for r in selected_utility)
+        rows.append(
+            {
+                "Datetime": timestamp,
+                "Phase": phase,
+                "GrossLoadP_kW": gross_p,
+                "GrossLoadQ_kvar": gross_q,
+                "PVGenerationP_kW": pv_p,
+                "PVGenerationQ_kvar": pv_q,
+                "SourceP_kW": source_p,
+                "SourceQ_kvar": source_q,
+                "LossP_kW": source_p - gross_p + pv_p,
+                "LossQ_kvar": source_q - gross_q + pv_q,
+            }
+        )
+    return rows
 
-        powers = np.asarray(element.Powers, dtype=float)
-        bus_p[bus_index] += powers[0::2].sum()
-        bus_q[bus_index] += powers[1::2].sum()
 
-    return bus_p, bus_q
+def _applied_input_rows(
+    timestamp: pd.Timestamp,
+    step_index: int,
+    study: StudySpec,
+    inputs: StudyInputs,
+) -> list[dict[str, object]]:
+    """Record exactly what was injected so each solved case is auditable."""
+
+    rows = [
+        {
+            "Datetime": timestamp,
+            "InputType": "Load",
+            "Element": load.dss_name,
+            "Phase": load.phase,
+            "P_kW": inputs.loads.p_kw[step_index, index],
+            "Q_kvar": inputs.loads.q_kvar[step_index, index],
+            "Irradiance_kW_m2": np.nan,
+            "Temperature_C": np.nan,
+            "Pmpp_kW": np.nan,
+            "kVA": np.nan,
+            "PF": np.nan,
+        }
+        for index, load in enumerate(study.loads)
+    ]
+    rows.extend(
+        {
+            "Datetime": timestamp,
+            "InputType": "PVSystem",
+            "Element": pv.dss_name,
+            "Phase": "NET",
+            "P_kW": np.nan,
+            "Q_kvar": np.nan,
+            "Irradiance_kW_m2": inputs.pv.irradiance_kw_m2[step_index, index],
+            "Temperature_C": inputs.pv.temperature_c[step_index, index],
+            "Pmpp_kW": inputs.pv.pmpp_kw[index],
+            "kVA": inputs.pv.kva[index],
+            "PF": inputs.pv.power_factor[index],
+        }
+        for index, pv in enumerate(study.pv_systems)
+    )
+    return rows

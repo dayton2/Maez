@@ -1,96 +1,116 @@
-# Maez Distribution-System Analysis
+# Maez Phase-Resolved Distribution Study
 
-This project applies building demand and power-factor time series to an OpenDSS
-feeder. The simulation is controlled entirely from Python through DSS-Python;
-MATLAB and the Windows COM server are not required.
+This project uses DSS-Python to inject externally generated, phase-resolved load
+and PV inputs into a 16-bus OpenDSS feeder. Each timestamp is solved as a snapshot,
+then terminal power, current, voltage, source flow, bus voltage, and system power
+balance are recorded. MATLAB and Windows COM are not required.
 
-## Design
-
-The implementation deliberately separates repeatable simulation code from
-interactive exploration:
-
-- `dss/` contains the electrical model written in the native DSS language.
-- `data/` contains paired 30-minute active-power and power-factor profiles.
-- `src/maez/` contains the engine, validation, simulation, and export code.
-- `scripts/run_analysis.py` and the `maez-run` command execute the whole study.
-- `notebooks/` is reserved for preprocessing and visual analysis of saved results.
-- `results/` receives both CSV and Parquet outputs and is ignored by Git.
-
-The command-line run is the source of truth. A notebook should import functions
-from `maez` or read saved results; it should not duplicate the OpenDSS solution
-loop. This keeps results reproducible regardless of notebook cell execution order.
-
-## Environment setup
-
-The project uses `uv` and Python 3.12 or newer. Install the locked environment:
+## Install and run
 
 ```powershell
 uv sync
-```
-
-`dss-python` bundles its engine interface, so an installed or COM-registered copy
-of EPRI OpenDSS is not needed.
-
-## Running the analysis
-
-Run all profile rows:
-
-```powershell
 uv run maez-run
 ```
 
-The equivalent convenience-script command is:
+The repository includes two simple two-step mock datasets, so the default command
+is a complete lightweight example. Limit any dataset to its first timestamp with:
 
 ```powershell
-uv run python scripts/run_analysis.py
+uv run maez-run --max-steps 1
 ```
 
-After generating results, open `notebooks/analysis_results.ipynb` in Jupyter to
-review summary statistics, system and bus power plots, profile assignments, peak
-conditions, and selected date ranges without rerunning OpenDSS.
-
-For a quick check that compiles the model and solves only two time steps:
+Custom files can be supplied without modifying source code:
 
 ```powershell
-uv run maez-run --max-steps 2
+uv run maez-run `
+  --load-profiles data/my_load_profiles.csv `
+  --pv-profiles data/my_pv_profiles.csv
 ```
 
-The run creates these tables in `results/`, in CSV and Parquet formats:
+## Input schemas
 
-- `applied_load_profiles` records the building-to-bus mapping and assigned kW/kvar.
-- `bus_power_timeseries` contains aggregated load and PV power at each circuit bus.
-- `system_power_timeseries` contains net circuit demand at the source.
+`data/mock_load_phase_profiles.csv` is long-form, with exactly one row per DSS
+single-phase Load per timestamp:
 
-Positive system power represents net demand. At the element level, OpenDSS loads
-consume positive power while the PV system normally contributes negative power.
+```text
+Datetime,Load,Phase,P_kW,Q_kvar
+2026-07-01 12:00:00,load_8A,A,18,6
+```
 
-## Code walkthrough
+The required columns are `Datetime`, `Load`, `Phase`, and `P_kW`. Supply either:
 
-`config.py` defines repository paths and the mapping from the first seven CSV
-building profiles to buses `con_8`, `con_9`, `con_11`, `con_12`, `con_13`,
-`con_14`, and `con_15`.
+- `Q_kvar`, which may be positive or negative; or
+- `PF`, where positive means lagging and negative means leading.
 
-`profiles.py` parses timestamps and checks row counts, column correspondence,
-timestamps, finite numeric values, nonnegative demand, and power factors in
-the interval `(0, 1]`. Invalid inputs therefore fail before starting a simulation.
+Every configured load must appear at every timestamp. The explicit load/phase/bus
+mapping is defined by `default_study_spec()` in `src/maez/config.py`.
 
-`opendss_engine.py` creates a fresh `DSS.NewContext()` and compiles `Master.dss`.
-A new context prevents state from a previous analysis from leaking into a run.
+`data/mock_pv_profiles.csv` has one row per PVSystem per timestamp:
 
-`simulation.py` converts each building's kW and power factor into kvar, divides
-the balanced demand among three single-phase load objects, solves a snapshot,
-checks convergence, and collects bus and circuit totals.
+```text
+Datetime,PVSystem,Irradiance_kW_m2,Temperature_C,Pmpp_kW,kVA,PF
+2026-07-01 12:00:00,PV_346kW,0.50,30,346,346,1.0
+```
 
-`results.py` writes CSV for readability and backward compatibility plus Parquet
-for efficient, typed notebook analysis.
+`Pmpp_kW`, `kVA`, and `PF` are equipment/operating settings and must remain
+constant for a given PVSystem. Irradiance and temperature may vary each timestamp.
+The load and PV timestamp sets must match exactly.
 
-## Testing and formatting
+## Architecture
+
+```text
+models/       typed circuit, input, and measurement contracts
+inputs/       CSV validation and conversion to dense NumPy arrays
+engine/       DSS compilation, cached bindings, injection, and measurement
+simulation.py time-step orchestration and system-balance calculation
+results.py    CSV and Parquet persistence
+cli.py        reproducible command-line entry point
+```
+
+The static circuit remains in `dss/`. It is compiled once. Load kW/kvar and PV
+irradiance/temperature are then assigned directly before each solve; circuit
+elements are not recreated during the time-series loop.
+
+The source model and solution algorithm are intentionally left at their present
+OpenDSS settings until the study requirements are finalized. The commented lines
+in `Master.dss` show where those settings can later be made explicit.
+
+## Results
+
+Each table is written as readable CSV and typed Parquet:
+
+- `element_timeseries`: phase and net load/PV terminal P and Q, plus phase
+  current and node-to-ground voltage magnitude/angle.
+- `bus_voltage_timeseries`: A/B/C voltage magnitude, angle, and per-unit value.
+- `utility_line_timeseries`: phase and net measurements at terminal 1 of
+  `Line.feeder_1_2`, with positive power entering the feeder.
+- `system_timeseries`: phase and net gross load, positive PV generation, source
+  import, and derived feeder loss.
+- `applied_inputs`: an audit trail of every load and PV value injected.
+
+For net element rows, current and voltage are intentionally blank: P and Q add
+across phases, but phase current phasors and voltages do not have a single scalar
+"net" measurement.
+
+The balance convention is:
+
+```text
+Source import = Gross load - PV generation + Feeder loss
+```
+
+Open `notebooks/analysis_results.ipynb` after a run to inspect tables, phase source
+flows, bus voltages, load/PV terminal measurements, and balance checks:
 
 ```powershell
-uv run pytest
+uv run jupyter notebook notebooks/analysis_results.ipynb
+```
+
+## Verification
+
+```powershell
 uv run ruff check .
-uv run ruff format .
+uv run pytest
 ```
 
-The integration test uses a short two-step simulation, so it verifies the actual
-DSS model and engine connection without running the full annual profile.
+The tests validate both input schemas and perform real DSS-Python solves using the
+mock unbalanced profiles.

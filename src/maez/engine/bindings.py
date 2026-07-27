@@ -1,0 +1,35 @@
+"""Resolve human-readable DSS names to reusable classic-API indices."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from maez.models.circuit import StudySpec
+
+
+@dataclass(frozen=True)
+class EngineBindings:
+    """Cached indices and names used repeatedly in the time-step loop."""
+
+    load_indices: tuple[int, ...]
+    pv_indices: tuple[int, ...]
+    measured_element_names: tuple[str, ...]
+    utility_line_name: str
+    bus_names: tuple[str, ...]
+
+
+def build_bindings(circuit: Any, study: StudySpec) -> EngineBindings:
+    """Cache indices once instead of repeatedly selecting elements by text."""
+
+    load_index = {name.casefold(): index for index, name in enumerate(circuit.Loads.AllNames, 1)}
+    pv_index = {name.casefold(): index for index, name in enumerate(circuit.PVSystems.AllNames, 1)}
+    return EngineBindings(
+        load_indices=tuple(load_index[load.dss_name.casefold()] for load in study.loads),
+        pv_indices=tuple(pv_index[pv.dss_name.casefold()] for pv in study.pv_systems),
+        measured_element_names=tuple(
+            [load.full_name for load in study.loads] + [pv.full_name for pv in study.pv_systems]
+        ),
+        utility_line_name=study.measurements.utility_line_full_name,
+        bus_names=study.measurements.buses,
+    )

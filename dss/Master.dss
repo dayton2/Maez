@@ -13,4 +13,7 @@ CalcVoltageBases
 Set ControlMode=Static
 Set MaxControlIter=20
 
+! Set LoadModel=PowerFlow
+! Set Algorithm=Newton
+
 Solve
