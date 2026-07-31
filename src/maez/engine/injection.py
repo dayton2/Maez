@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+from dss.ICircuit import ICircuit
 
 from maez.engine.bindings import EngineBindings
 from maez.models.profiles import StudyInputs
 
 
-def configure_pv_ratings(circuit: Any, bindings: EngineBindings, inputs: StudyInputs) -> None:
+def configure_pv_ratings(circuit: ICircuit, bindings: EngineBindings, inputs: StudyInputs) -> None:
     """Apply static PV ratings once after compiling the circuit."""
 
     pv_systems = circuit.PVSystems
@@ -20,7 +20,7 @@ def configure_pv_ratings(circuit: Any, bindings: EngineBindings, inputs: StudyIn
 
 
 def inject_time_step(
-    circuit: Any,
+    circuit: ICircuit,
     bindings: EngineBindings,
     inputs: StudyInputs,
     step_index: int,

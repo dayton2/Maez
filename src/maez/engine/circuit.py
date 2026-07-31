@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from dss import DSS
+from dss.IDSS import IDSS
 
 from maez.models.circuit import StudySpec
 
 
-def compile_circuit(master_file: Path, study: StudySpec) -> Any:
+def compile_circuit(master_file: Path, study: StudySpec) -> IDSS:
     """Compile ``Master.dss`` in a fresh context and validate configured names."""
 
     master_file = master_file.expanduser().resolve()

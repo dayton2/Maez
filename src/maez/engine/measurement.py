@@ -5,6 +5,7 @@ from __future__ import annotations
 from math import atan2, degrees, hypot
 from typing import Any
 
+from dss.ICircuit import ICircuit
 import numpy as np
 import pandas as pd
 
@@ -26,7 +27,7 @@ def _magnitude_angle(pair: np.ndarray) -> tuple[float, float]:
 
 
 def collect_element_measurements(
-    circuit: Any,
+    circuit: ICircuit,
     element_name: str,
     timestamp: pd.Timestamp,
     terminal_numbers: tuple[int, ...] | None = None,
@@ -40,8 +41,8 @@ def collect_element_measurements(
     currents = _pairs(element.Currents)
     voltages = _pairs(element.Voltages)
     node_order = np.asarray(element.NodeOrder, dtype=int)
-    conductor_count = int(element.NumConductors)
-    terminal_count = int(element.NumTerminals)
+    conductor_count = int(element.NumConductors) # number of physical connections (phase, neutral) per terminal
+    terminal_count = int(element.NumTerminals) # number of buses connected to active element
     expected = conductor_count * terminal_count
     if not all(len(values) == expected for values in (powers, currents, voltages, node_order)):
         raise ValueError(f"Unexpected terminal-array dimensions for {element_name}.")
@@ -83,7 +84,7 @@ def collect_element_measurements(
 
 
 def collect_bus_voltages(
-    circuit: Any, bus_names: tuple[str, ...], timestamp: pd.Timestamp
+    circuit: ICircuit, bus_names: tuple[str, ...], timestamp: pd.Timestamp
 ) -> list[BusVoltageMeasurement]:
     """Read node-to-ground magnitude/angle and per-unit magnitude by bus phase."""
 
