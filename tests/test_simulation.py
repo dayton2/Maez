@@ -33,7 +33,11 @@ def test_mock_time_series_is_phase_resolved_and_balanced() -> None:
     assert set(results.utility_line_timeseries["Phase"]) == {"A", "B", "C", "NET"}
 
     net = results.system_timeseries.query("Phase == 'NET'")
-    assert net["PVGenerationP_kW"].iloc[1] > net["PVGenerationP_kW"].iloc[0]
+    sunrise = net["Datetime"] == np.datetime64("2026-07-01 06:00:00")
+    midday = net["Datetime"] == np.datetime64("2026-07-01 13:00:00")
+    assert net.loc[midday, "PVGenerationP_kW"].iloc[0] > net.loc[
+        sunrise, "PVGenerationP_kW"
+    ].iloc[0]
     reconstructed_source = net["GrossLoadP_kW"] - net["PVGenerationP_kW"] + net["LossP_kW"]
     assert np.allclose(reconstructed_source, net["SourceP_kW"], atol=1e-8)
 

@@ -20,11 +20,16 @@ def test_mock_profiles_load_in_study_order() -> None:
     pv = load_pv_profiles(paths.pv_profiles_csv, study)
     inputs = StudyInputs(loads, pv)
 
-    assert len(inputs.timestamps) == 2
-    assert loads.p_kw.shape == (2, 21)
+    assert len(inputs.timestamps) == 49
+    assert inputs.timestamps[0] == pd.Timestamp("2026-07-01 00:00:00")
+    assert inputs.timestamps[-1] == pd.Timestamp("2026-07-02 00:00:00")
+    assert loads.p_kw.shape == (49, 21)
     assert loads.load_names[0:3] == ("load_8A", "load_8B", "load_8C")
-    assert loads.p_kw[0, 0] > loads.p_kw[0, 1] > loads.p_kw[0, 2]
-    assert pv.irradiance_kw_m2[:, 0].tolist() == [0.5, 0.8]
+    assert np.all(loads.p_kw == loads.p_kw[:, :1])
+    assert loads.p_kw[0, 0] == loads.p_kw[-1, 0] == 5.0
+    assert loads.p_kw[28, 0] == 20.0
+    assert pv.irradiance_kw_m2[0, 0] == pv.irradiance_kw_m2[-1, 0] == 0.0
+    assert pv.irradiance_kw_m2[26, 0] == 1.0
     assert pv.pmpp_kw.tolist() == [346.0]
 
 
