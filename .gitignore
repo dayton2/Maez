@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.agents
 
 # Wheel/sdist output produced when packaging the src-layout project.
 build/
